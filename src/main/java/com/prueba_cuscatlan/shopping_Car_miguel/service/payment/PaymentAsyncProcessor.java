@@ -1,5 +1,6 @@
 package com.prueba_cuscatlan.shopping_Car_miguel.service.payment;
 
+import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.Order;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.OrderPayment;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.enums.OrderStatus;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.enums.PaymentStatus;
@@ -29,6 +30,10 @@ public class PaymentAsyncProcessor {
                 OrderPayment payment = orderPaymentRepository.findById(paymentId)
                                 .orElseThrow(() -> new IllegalStateException("Payment not found: " + paymentId));
 
+                Order order = orderRepository.findById(context.getOrder().getId())
+                                .orElseThrow(() -> new IllegalStateException(
+                                                "Order not found: " + context.getOrder().getId()));
+
                 try {
                         PaymentResult result = strategyFactory
                                         .resolve(context.getPaymentMethod())
@@ -37,8 +42,7 @@ public class PaymentAsyncProcessor {
                         payment.setStatus(result.isApproved() ? PaymentStatus.COMPLETED : PaymentStatus.FAILED);
                         payment.setTransactionId(result.getTransactionId());
 
-                        context.getOrder().setStatus(
-                                        result.isApproved() ? OrderStatus.PAID : OrderStatus.PAYMENT_FAILED);
+                        order.setStatus(result.isApproved() ? OrderStatus.PAID : OrderStatus.PAYMENT_FAILED);
 
                         log.info("Async payment done paymentId={} approved={} txId={}",
                                         paymentId, result.isApproved(), result.getTransactionId());
@@ -46,10 +50,10 @@ public class PaymentAsyncProcessor {
                 } catch (Exception ex) {
                         log.error("Async payment failed paymentId={}: {}", paymentId, ex.getMessage());
                         payment.setStatus(PaymentStatus.FAILED);
-                        context.getOrder().setStatus(OrderStatus.PAYMENT_FAILED);
+                        order.setStatus(OrderStatus.PAYMENT_FAILED);
                 }
 
                 orderPaymentRepository.save(payment);
-                orderRepository.save(context.getOrder());
+                orderRepository.save(order);
         }
 }

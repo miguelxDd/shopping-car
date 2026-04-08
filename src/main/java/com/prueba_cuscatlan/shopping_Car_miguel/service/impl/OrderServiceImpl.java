@@ -3,7 +3,6 @@ package com.prueba_cuscatlan.shopping_Car_miguel.service.impl;
 import com.prueba_cuscatlan.shopping_Car_miguel.exception.BadRequestException;
 import com.prueba_cuscatlan.shopping_Car_miguel.exception.ResourceNotFoundException;
 import com.prueba_cuscatlan.shopping_Car_miguel.mapper.OrderMapper;
-import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.CheckoutRequest;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.ExternalProductDTO;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderDetailRequest;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderRequest;
@@ -21,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,17 +44,17 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponse checkout(CheckoutRequest request) {
-        Cart cart = cartRepository.findByUserId(request.getUserId())
+    public OrderResponse checkout(String userId) {
+        Cart cart = cartRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Cart not found for user: " + request.getUserId()));
+                        "Cart not found for user: " + userId));
 
         if (cart.getItems().isEmpty()) {
             throw new BadRequestException("Cannot checkout an empty cart");
         }
 
         Order order = Order.builder()
-                .userId(request.getUserId())
+                .userId(userId)
                 .status(OrderStatus.CONFIRMED)
                 .build();
 
@@ -81,16 +81,16 @@ public class OrderServiceImpl implements OrderService {
         cartRepository.save(cart);
 
         log.info("Checkout complete userId={} orderId={} total={}",
-                request.getUserId(), response.getId(), response.getTotal());
+                userId, response.getId(), response.getTotal());
 
         return response;
     }
 
     @Override
     @Transactional
-    public OrderResponse create(OrderRequest request) {
+    public OrderResponse create(String userId, OrderRequest request) {
         Order order = Order.builder()
-                .userId(request.getUserId())
+                .userId(userId)
                 .build();
 
         List<OrderDetail> details = buildDetails(request.getItems(), order);
@@ -98,37 +98,43 @@ public class OrderServiceImpl implements OrderService {
         order.setTotal(computeTotal(details));
 
         log.info("Creating order for userId={} items={} total={}",
-                request.getUserId(), details.size(), order.getTotal());
+                userId, details.size(), order.getTotal());
 
         return orderMapper.toResponse(orderRepository.save(order));
     }
 
     @Override
-    public Page<OrderResponse> findAll(Pageable pageable) {
-        return orderRepository.findAll(pageable).map(orderMapper::toResponse);
+    public Page<OrderResponse> findAllByUser(String userId, Pageable pageable) {
+        return orderRepository.findByUserId(userId, pageable).map(orderMapper::toResponse);
     }
 
     @Override
-    public OrderResponse findById(Long id) {
-        return orderMapper.toResponse(findOrderOrThrow(id));
+    public OrderResponse findById(String userId, Long id) {
+        return orderMapper.toResponse(findOwnedOrderOrThrow(userId, id));
     }
 
     @Override
     @Transactional
-    public OrderResponse update(Long id, UpdateOrderRequest request) {
-        Order order = findOrderOrThrow(id);
+    public OrderResponse update(String userId, Long id, UpdateOrderRequest request) {
+        Order order = findOwnedOrderOrThrow(userId, id);
 
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw new BadRequestException("Cannot update a cancelled order");
         }
-        if (request.getStatus() != null) {
-            order.setStatus(request.getStatus());
+        if (order.getStatus() == OrderStatus.DELIVERED) {
+            throw new BadRequestException("Cannot update a delivered order");
         }
         if (request.getItems() != null && !request.getItems().isEmpty()) {
+            if (order.getStatus() == OrderStatus.PAID || order.getStatus() == OrderStatus.SHIPPED) {
+                throw new BadRequestException("Cannot modify items on an order that is already " + order.getStatus());
+            }
             order.getDetails().clear();
             List<OrderDetail> newDetails = buildDetails(request.getItems(), order);
             order.getDetails().addAll(newDetails);
             order.setTotal(computeTotal(newDetails));
+        }
+        if (request.getStatus() != null) {
+            order.setStatus(request.getStatus());
         }
 
         log.info("Updating orderId={} status={} total={}", id, order.getStatus(), order.getTotal());
@@ -137,14 +143,20 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public void cancel(Long id) {
-        Order order = findOrderOrThrow(id);
+    public void cancel(String userId, Long id) {
+        Order order = findOwnedOrderOrThrow(userId, id);
 
         if (order.getStatus() == OrderStatus.DELIVERED) {
             throw new BadRequestException("Cannot cancel an order that has already been delivered");
         }
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw new BadRequestException("Order is already cancelled");
+        }
+        if (order.getStatus() == OrderStatus.PAID) {
+            throw new BadRequestException("Cannot cancel an order that has already been paid");
+        }
+        if (order.getStatus() == OrderStatus.SHIPPED) {
+            throw new BadRequestException("Cannot cancel an order that has already been shipped");
         }
 
         order.setStatus(OrderStatus.CANCELLED);
@@ -179,5 +191,13 @@ public class OrderServiceImpl implements OrderService {
     private Order findOrderOrThrow(Long id) {
         return orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order", id));
+    }
+
+    private Order findOwnedOrderOrThrow(String userId, Long id) {
+        Order order = findOrderOrThrow(id);
+        if (!order.getUserId().equals(userId)) {
+            throw new AccessDeniedException("Order does not belong to the authenticated user");
+        }
+        return order;
     }
 }

@@ -23,7 +23,6 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // userId from the cart — no local Customer entity needed
     @Column(name = "user_id", nullable = false)
     private String userId;
 

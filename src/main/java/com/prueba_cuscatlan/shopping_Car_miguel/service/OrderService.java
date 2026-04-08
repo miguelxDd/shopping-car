@@ -1,6 +1,5 @@
 package com.prueba_cuscatlan.shopping_Car_miguel.service;
 
-import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.CheckoutRequest;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderRequest;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderResponse;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.UpdateOrderRequest;
@@ -9,16 +8,16 @@ import org.springframework.data.domain.Pageable;
 
 public interface OrderService {
 
-    OrderResponse create(OrderRequest request);
+    OrderResponse create(String userId, OrderRequest request);
 
     /** Converts an existing cart into a confirmed order and clears the cart. */
-    OrderResponse checkout(CheckoutRequest request);
+    OrderResponse checkout(String userId);
 
-    Page<OrderResponse> findAll(Pageable pageable);
+    Page<OrderResponse> findAllByUser(String userId, Pageable pageable);
 
-    OrderResponse findById(Long id);
+    OrderResponse findById(String userId, Long id);
 
-    OrderResponse update(Long id, UpdateOrderRequest request);
+    OrderResponse update(String userId, Long id, UpdateOrderRequest request);
 
-    void cancel(Long id);
+    void cancel(String userId, Long id);
 }

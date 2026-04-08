@@ -13,9 +13,6 @@ import java.util.List;
 @Builder
 public class OrderRequest {
 
-    @NotBlank(message = "User ID is required")
-    private String userId;
-
     @NotEmpty(message = "Order must have at least one item")
     @Valid
     private List<OrderDetailRequest> items;

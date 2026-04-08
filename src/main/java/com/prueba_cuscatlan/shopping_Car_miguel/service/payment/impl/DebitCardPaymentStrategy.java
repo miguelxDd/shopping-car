@@ -5,11 +5,9 @@ import com.prueba_cuscatlan.shopping_Car_miguel.service.payment.PaymentContext;
 import com.prueba_cuscatlan.shopping_Car_miguel.service.payment.PaymentResult;
 import com.prueba_cuscatlan.shopping_Car_miguel.service.payment.PaymentStrategy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.random.RandomGenerator;
 
 @Slf4j
@@ -23,21 +21,20 @@ public class DebitCardPaymentStrategy implements PaymentStrategy {
         return PaymentMethod.DEBIT_CARD;
     }
 
-    @Async
     @Override
-    public CompletableFuture<PaymentResult> process(PaymentContext context) {
+    public PaymentResult process(PaymentContext context) {
         simulateNetworkDelay();
 
         boolean approved = RandomGenerator.getDefault().nextDouble() < SUCCESS_RATE;
-        log.info("DebitCard payment for orderId={} amount={} → {} [thread={}]",
-                context.getOrder().getId(), context.getAmount(),
-                approved ? "APPROVED" : "DECLINED", Thread.currentThread().getName());
+        log.info("DebitCard payment orderId={} → {} [thread={}]",
+                context.getOrder().getId(), approved ? "APPROVED" : "DECLINED",
+                Thread.currentThread().getName());
 
-        return CompletableFuture.completedFuture(PaymentResult.builder()
+        return PaymentResult.builder()
                 .approved(approved)
                 .transactionId(approved ? "DC-" + UUID.randomUUID() : null)
                 .message(approved ? "Debit card payment approved" : "Insufficient funds or card declined")
-                .build());
+                .build();
     }
 
     private void simulateNetworkDelay() {

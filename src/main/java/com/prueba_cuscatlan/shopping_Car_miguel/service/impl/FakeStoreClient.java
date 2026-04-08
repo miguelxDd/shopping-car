@@ -2,7 +2,6 @@ package com.prueba_cuscatlan.shopping_Car_miguel.service.impl;
 
 import com.prueba_cuscatlan.shopping_Car_miguel.config.FakeStoreProperties;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.ExternalProductDTO;
-import com.prueba_cuscatlan.shopping_Car_miguel.service.ExternalProductService;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
@@ -15,14 +14,13 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class FakeStoreClient implements ExternalProductService {
+public class FakeStoreClient {
 
     private final RestTemplate restTemplate;
     private final FakeStoreProperties properties;
 
     @CircuitBreaker(name = "fakestore")
     @Retry(name = "fakestore")
-    @Override
     public List<ExternalProductDTO> findAll() {
         return restTemplate.exchange(
                 properties.getBaseUrl(),
@@ -33,7 +31,6 @@ public class FakeStoreClient implements ExternalProductService {
 
     @CircuitBreaker(name = "fakestore")
     @Retry(name = "fakestore")
-    @Override
     public ExternalProductDTO findById(Long id) {
         return restTemplate.getForObject(
                 properties.getBaseUrl() + "/{id}",
@@ -42,7 +39,6 @@ public class FakeStoreClient implements ExternalProductService {
 
     @CircuitBreaker(name = "fakestore")
     @Retry(name = "fakestore")
-    @Override
     public List<String> findCategories() {
         return restTemplate.exchange(
                 properties.getBaseUrl() + "/categories",
@@ -53,7 +49,6 @@ public class FakeStoreClient implements ExternalProductService {
 
     @CircuitBreaker(name = "fakestore")
     @Retry(name = "fakestore")
-    @Override
     public List<ExternalProductDTO> findByCategory(String category) {
         return restTemplate.exchange(
                 properties.getBaseUrl() + "/category/{category}",

@@ -21,7 +21,7 @@ public class CashPaymentStrategy implements PaymentStrategy {
     @Override
     public PaymentResult process(PaymentContext context) {
         log.info("Cash payment orderId={} → APPROVED [thread={}]",
-                context.getOrder().getId(), Thread.currentThread().getName());
+                context.getOrderId(), Thread.currentThread().getName());
 
         return PaymentResult.builder()
                 .approved(true)

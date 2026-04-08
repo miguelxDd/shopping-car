@@ -30,9 +30,9 @@ public class PaymentAsyncProcessor {
                 OrderPayment payment = orderPaymentRepository.findById(paymentId)
                                 .orElseThrow(() -> new IllegalStateException("Payment not found: " + paymentId));
 
-                Order order = orderRepository.findById(context.getOrder().getId())
+                Order order = orderRepository.findById(context.getOrderId())
                                 .orElseThrow(() -> new IllegalStateException(
-                                                "Order not found: " + context.getOrder().getId()));
+                                                "Order not found: " + context.getOrderId()));
 
                 try {
                         PaymentResult result = strategyFactory

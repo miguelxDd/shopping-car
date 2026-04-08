@@ -27,7 +27,7 @@ public class BankTransferPaymentStrategy implements PaymentStrategy {
 
         boolean approved = RandomGenerator.getDefault().nextDouble() < SUCCESS_RATE;
         log.info("BankTransfer payment orderId={} → {} [thread={}]",
-                context.getOrder().getId(), approved ? "APPROVED" : "DECLINED",
+                context.getOrderId(), approved ? "APPROVED" : "DECLINED",
                 Thread.currentThread().getName());
 
         return PaymentResult.builder()

@@ -15,6 +15,7 @@ import com.prueba_cuscatlan.shopping_Car_miguel.service.payment.PaymentAsyncProc
 import com.prueba_cuscatlan.shopping_Car_miguel.service.payment.PaymentContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +31,8 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentAsyncProcessor asyncProcessor;
 
     @Override
-    public OrderPaymentResponse processPayment(String idempotencyKey, OrderPaymentRequest request) {
+    @Transactional
+    public OrderPaymentResponse processPayment(String userId, String idempotencyKey, OrderPaymentRequest request) {
         // Idempotency: same key → return stored result without reprocessing
         if (idempotencyKey != null) {
             var existing = orderPaymentRepository.findByIdempotencyKey(idempotencyKey);
@@ -42,6 +44,10 @@ public class PaymentServiceImpl implements PaymentService {
 
         Order order = orderRepository.findById(request.getOrderId())
                 .orElseThrow(() -> new ResourceNotFoundException("Order", request.getOrderId()));
+
+        if (!order.getUserId().equals(userId)) {
+            throw new AccessDeniedException("Order does not belong to the authenticated user");
+        }
 
         validatePaymentEligibility(order, request.getAmount());
 
@@ -57,7 +63,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         // 2. Build context and hand off to async executor — non-blocking
         PaymentContext context = PaymentContext.builder()
-                .order(order)
+                .orderId(order.getId())
                 .amount(request.getAmount())
                 .paymentMethod(request.getPaymentMethod())
                 .build();
@@ -72,10 +78,13 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional(readOnly = true)
-    public OrderPaymentResponse findById(Long id) {
-        return orderPaymentRepository.findById(id)
-                .map(this::toResponse)
+    public OrderPaymentResponse findById(String userId, Long id) {
+        OrderPayment payment = orderPaymentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment", id));
+        if (!payment.getOrder().getUserId().equals(userId)) {
+            throw new AccessDeniedException("Payment does not belong to the authenticated user");
+        }
+        return toResponse(payment);
     }
 
     private void validatePaymentEligibility(Order order, BigDecimal amount) {
@@ -85,9 +94,13 @@ public class PaymentServiceImpl implements PaymentService {
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw new BadRequestException("Cannot pay a cancelled order");
         }
-        if (orderPaymentRepository.findByOrderId(order.getId()).isPresent()) {
-            throw new BadRequestException("A payment already exists for order " + order.getId());
-        }
+        orderPaymentRepository.findByOrderId(order.getId()).ifPresent(existing -> {
+            if (existing.getStatus() == PaymentStatus.PENDING || existing.getStatus() == PaymentStatus.COMPLETED) {
+                throw new BadRequestException("A payment already exists for order " + order.getId());
+            }
+            // FAILED payment — delete to allow retry
+            orderPaymentRepository.delete(existing);
+        });
         if (amount.compareTo(order.getTotal()) != 0) {
             throw new BadRequestException(
                     "Payment amount " + amount + " does not match order total " + order.getTotal());

@@ -10,10 +10,8 @@ import com.prueba_cuscatlan.shopping_Car_miguel.model.enums.PaymentMethod;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.enums.PaymentStatus;
 import com.prueba_cuscatlan.shopping_Car_miguel.repository.OrderPaymentRepository;
 import com.prueba_cuscatlan.shopping_Car_miguel.repository.OrderRepository;
+import com.prueba_cuscatlan.shopping_Car_miguel.service.payment.PaymentAsyncProcessor;
 import com.prueba_cuscatlan.shopping_Car_miguel.service.payment.PaymentContext;
-import com.prueba_cuscatlan.shopping_Car_miguel.service.payment.PaymentResult;
-import com.prueba_cuscatlan.shopping_Car_miguel.service.payment.PaymentStrategy;
-import com.prueba_cuscatlan.shopping_Car_miguel.service.payment.PaymentStrategyFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,126 +22,122 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceImplTest {
 
-        @Mock
-        OrderRepository orderRepository;
-        @Mock
-        OrderPaymentRepository orderPaymentRepository;
-        @Mock
-        PaymentStrategyFactory strategyFactory;
-        @Mock
-        PaymentStrategy paymentStrategy;
+    @Mock OrderRepository        orderRepository;
+    @Mock OrderPaymentRepository orderPaymentRepository;
+    @Mock PaymentAsyncProcessor  asyncProcessor;
 
-        @InjectMocks
-        PaymentServiceImpl paymentService;
+    @InjectMocks PaymentServiceImpl paymentService;
 
-        private Order order;
-        private OrderPaymentRequest request;
+    private Order order;
+    private OrderPaymentRequest request;
 
-        @BeforeEach
-        void setUp() {
-                order = Order.builder()
-                                .id(1L).status(OrderStatus.CONFIRMED)
-                                .total(new BigDecimal("99.99"))
-                                .build();
+    @BeforeEach
+    void setUp() {
+        order = Order.builder()
+                .id(1L).status(OrderStatus.CONFIRMED)
+                .total(new BigDecimal("99.99"))
+                .build();
 
-                request = OrderPaymentRequest.builder()
-                                .orderId(1L)
-                                .paymentMethod(PaymentMethod.CREDIT_CARD)
-                                .amount(new BigDecimal("99.99"))
-                                .build();
-        }
+        request = OrderPaymentRequest.builder()
+                .orderId(1L)
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(new BigDecimal("99.99"))
+                .build();
+    }
 
-        @Test
-        @DisplayName("processPayment returns COMPLETED when strategy approves")
-        void processPayment_returnsCompleted_whenApproved() {
-                when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
-                when(orderPaymentRepository.findByOrderId(1L)).thenReturn(Optional.empty());
-                when(strategyFactory.resolve(PaymentMethod.CREDIT_CARD)).thenReturn(paymentStrategy);
-                when(paymentStrategy.process(any(PaymentContext.class)))
-                                .thenReturn(CompletableFuture.completedFuture(PaymentResult.builder()
-                                                .approved(true).transactionId("CC-123").message("Approved").build()));
-                when(orderPaymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-                when(orderRepository.save(any())).thenReturn(order);
+    @Test
+    @DisplayName("processPayment returns PENDING immediately and fires async processor")
+    void processPayment_returnsPending_andFiresAsync() {
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(orderPaymentRepository.findByOrderId(1L)).thenReturn(Optional.empty());
+        when(orderPaymentRepository.save(any())).thenAnswer(inv -> {
+            OrderPayment p = inv.getArgument(0);
+            p.setId(42L);
+            return p;
+        });
 
-                OrderPaymentResponse response = paymentService.processPayment(null, request);
+        OrderPaymentResponse response = paymentService.processPayment(null, request);
 
-                assertThat(response.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
-                assertThat(response.getTransactionId()).isEqualTo("CC-123");
-                assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
-        }
+        assertThat(response.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        assertThat(response.getId()).isEqualTo(42L);
+        // async processor must be triggered exactly once with the right payment id
+        verify(asyncProcessor).execute(eq(42L), any(PaymentContext.class));
+        verifyNoMoreInteractions(asyncProcessor);
+    }
 
-        @Test
-        @DisplayName("processPayment returns FAILED when strategy declines")
-        void processPayment_returnsFailed_whenDeclined() {
-                when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
-                when(orderPaymentRepository.findByOrderId(1L)).thenReturn(Optional.empty());
-                when(strategyFactory.resolve(PaymentMethod.CREDIT_CARD)).thenReturn(paymentStrategy);
-                when(paymentStrategy.process(any(PaymentContext.class)))
-                                .thenReturn(CompletableFuture.completedFuture(PaymentResult.builder()
-                                                .approved(false).transactionId(null).message("Declined").build()));
-                when(orderPaymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-                when(orderRepository.save(any())).thenReturn(order);
+    @Test
+    @DisplayName("processPayment throws BadRequestException when order is already paid")
+    void processPayment_throwsBadRequest_whenAlreadyPaid() {
+        order.setStatus(OrderStatus.PAID);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
-                OrderPaymentResponse response = paymentService.processPayment(null, request);
+        assertThatThrownBy(() -> paymentService.processPayment(null, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("already paid");
 
-                assertThat(response.getStatus()).isEqualTo(PaymentStatus.FAILED);
-                assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
-        }
+        verifyNoInteractions(asyncProcessor);
+    }
 
-        @Test
-        @DisplayName("processPayment throws BadRequestException when order is already paid")
-        void processPayment_throwsBadRequest_whenAlreadyPaid() {
-                order.setStatus(OrderStatus.PAID);
+    @Test
+    @DisplayName("processPayment throws BadRequestException when amount mismatches order total")
+    void processPayment_throwsBadRequest_whenAmountMismatch() {
+        request = OrderPaymentRequest.builder()
+                .orderId(1L).paymentMethod(PaymentMethod.CASH)
+                .amount(new BigDecimal("50.00")) // order total is 99.99
+                .build();
 
-                when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(orderPaymentRepository.findByOrderId(1L)).thenReturn(Optional.empty());
 
-                assertThatThrownBy(() -> paymentService.processPayment(null, request))
-                                .isInstanceOf(BadRequestException.class)
-                                .hasMessageContaining("already paid");
-        }
+        assertThatThrownBy(() -> paymentService.processPayment(null, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("does not match");
 
-        @Test
-        @DisplayName("processPayment throws BadRequestException when amount mismatches")
-        void processPayment_throwsBadRequest_whenAmountMismatch() {
-                request = OrderPaymentRequest.builder()
-                                .orderId(1L).paymentMethod(PaymentMethod.CASH)
-                                .amount(new BigDecimal("50.00")) // order total is 99.99
-                                .build();
+        verifyNoInteractions(asyncProcessor);
+    }
 
-                when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
-                when(orderPaymentRepository.findByOrderId(1L)).thenReturn(Optional.empty());
+    @Test
+    @DisplayName("processPayment throws BadRequestException when a payment already exists for the order")
+    void processPayment_throwsBadRequest_whenDuplicateOrderPayment() {
+        OrderPayment existing = OrderPayment.builder()
+                .id(10L).status(PaymentStatus.PENDING).build();
 
-                assertThatThrownBy(() -> paymentService.processPayment(null, request))
-                                .isInstanceOf(BadRequestException.class)
-                                .hasMessageContaining("does not match");
-        }
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(orderPaymentRepository.findByOrderId(1L)).thenReturn(Optional.of(existing));
 
-        @Test
-        @DisplayName("processPayment is idempotent — returns stored result on duplicate key")
-        void processPayment_returnsStoredResult_onDuplicateIdempotencyKey() {
-                OrderPayment existingPayment = OrderPayment.builder()
-                                .id(99L).paymentMethod(PaymentMethod.CREDIT_CARD)
-                                .amount(new BigDecimal("99.99")).status(PaymentStatus.COMPLETED)
-                                .transactionId("CC-ALREADY").idempotencyKey("key-abc")
-                                .build();
+        assertThatThrownBy(() -> paymentService.processPayment(null, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("already exists");
 
-                when(orderPaymentRepository.findByIdempotencyKey("key-abc"))
-                                .thenReturn(Optional.of(existingPayment));
+        verifyNoInteractions(asyncProcessor);
+    }
 
-                OrderPaymentResponse response = paymentService.processPayment("key-abc", request);
+    @Test
+    @DisplayName("processPayment is idempotent — returns stored result on duplicate Idempotency-Key")
+    void processPayment_returnsStoredResult_onDuplicateIdempotencyKey() {
+        OrderPayment existingPayment = OrderPayment.builder()
+                .id(99L).paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(new BigDecimal("99.99")).status(PaymentStatus.COMPLETED)
+                .transactionId("CC-ALREADY").idempotencyKey("key-abc")
+                .build();
 
-                assertThat(response.getTransactionId()).isEqualTo("CC-ALREADY");
-                assertThat(response.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
-                // Should NOT call the strategy at all
-                verifyNoInteractions(strategyFactory, orderRepository);
-        }
+        when(orderPaymentRepository.findByIdempotencyKey("key-abc"))
+                .thenReturn(Optional.of(existingPayment));
+
+        OrderPaymentResponse response = paymentService.processPayment("key-abc", request);
+
+        assertThat(response.getTransactionId()).isEqualTo("CC-ALREADY");
+        assertThat(response.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        // No order lookup, no async processing
+        verifyNoInteractions(asyncProcessor, orderRepository);
+    }
 }

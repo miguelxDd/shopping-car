@@ -1,0 +1,1017 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		"name": "Shopping Cart API — Prueba Técnica Cuscatlán",
+		"description": "**Autor:** Miguel Antonio Amaya Hernandez\n**Fecha:** 8 de abril de 2026\n\nColección completa para la API de Shopping Cart (Spring Boot + JWT + H2 como db temporal).\n\n**Flujo (ejecutar con Collection Runner en orden):**\n1. Register → guarda JWT automáticamente\n2. Consultar productos (FakeStore proxy — público)\n3. Agregar items al carrito\n4. Checkout (convierte carrito en orden)  guarda orderId y orderTotal\n5. Procesar pago  usa orderId/orderTotal, guarda paymentId\n6. Consultar estado del pago  PENDING / COMPLETED / FAILED\n7. Flujos alternativos: crear orden manual, actualizar, cancelar, limpiar carrito\n\n**Variables automáticas (test scripts):**\n- `base_url` — URL base (default http://localhost:8080)\n- `token` — JWT Bearer token\n- `orderId` — ID de la última orden\n- `orderTotal` — Total de la última orden\n- `paymentId` — ID del último pago",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "orderId",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "orderTotal",
+			"value": "109.95",
+			"type": "string"
+		},
+		{
+			"key": "paymentId",
+			"value": "1",
+			"type": "string"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"description": "Registro e inicio de sesión — devuelve JWT Bearer token.",
+			"item": [
+				{
+					"name": "Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set(\"token\", json.token);",
+									"    pm.test(\"Status 201 Created\", function () {",
+									"        pm.response.to.have.status(201);",
+									"    });",
+									"    pm.test(\"Token saved\", function () {",
+									"        pm.expect(json.token).to.be.a(\"string\").and.not.empty;",
+									"    });",
+									"    pm.test(\"Has username and email\", function () {",
+									"        pm.expect(json.username).to.be.a(\"string\");",
+									"        pm.expect(json.email).to.be.a(\"string\");",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"miguelxd\",\n    \"email\": \"miguel_test@cuscatlan.com\",\n    \"password\": \"password123\",\n    \"address\": \"San Salvador, El Salvador\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/register",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"register"
+							]
+						},
+						"description": "Crea una nueva cuenta y devuelve JWT.\nEl token se guarda automáticamente en la variable `token`."
+					},
+					"response": []
+				},
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set(\"token\", json.token);",
+									"    pm.test(\"Status 200 OK\", function () {",
+									"        pm.response.to.have.status(200);",
+									"    });",
+									"    pm.test(\"Token saved\", function () {",
+									"        pm.expect(json.token).to.be.a(\"string\").and.not.empty;",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"miguelxd\",\n    \"password\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						},
+						"description": "Autentica un cliente existente y devuelve JWT."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Products (FakeStore Proxy)",
+			"description": "Catalogo de productos desde FakeStore API con Circuit Breaker + Retry.\nEndpoints públicos (sin JWT).",
+			"item": [
+				{
+					"name": "List all products",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Response is an array\", function () {",
+									"    pm.expect(pm.response.json()).to.be.an(\"array\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"products"
+							]
+						},
+						"description": "Lista todos los productos del catalogo externo (FakeStore API)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get product by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Has product fields\", function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.id).to.be.a(\"number\");",
+									"    pm.expect(json.title).to.be.a(\"string\");",
+									"    pm.expect(json.price).to.be.a(\"number\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"products",
+								"1"
+							]
+						},
+						"description": "Obtiene un producto por su ID desde FakeStore API."
+					},
+					"response": []
+				},
+				{
+					"name": "Get all categories",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Response is an array\", function () {",
+									"    pm.expect(pm.response.json()).to.be.an(\"array\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/categories",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"products",
+								"categories"
+							]
+						},
+						"description": "Lista todas las categorías de productos disponibles."
+					},
+					"response": []
+				},
+				{
+					"name": "Get products by category",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Response is an array\", function () {",
+									"    pm.expect(pm.response.json()).to.be.an(\"array\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/category/electronics",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"products",
+								"category",
+								"electronics"
+							]
+						},
+						"description": "Lista productos filtrados por categoría."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Cart",
+			"description": "Gestión del carrito del usuario autenticado.\nRequiere JWT (se hereda de la colección).\nSolo operaciones aditivas — las destructivas están en Flujos Alternativos.",
+			"item": [
+				{
+					"name": "Get or create cart",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Has cart fields\", function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.id).to.be.a(\"number\");",
+									"    pm.expect(json.userId).to.be.a(\"string\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/carts",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"carts"
+							]
+						},
+						"description": "Obtiene el carrito del usuario autenticado (lo crea si no existe)."
+					},
+					"response": []
+				},
+				{
+					"name": "Add item to cart",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Cart has items\", function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.items).to.be.an(\"array\").and.not.empty;",
+									"    pm.expect(json.total).to.be.a(\"number\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"productId\": 1,\n    \"quantity\": 2\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/carts/items",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"carts",
+								"items"
+							]
+						},
+						"description": "Agrega un producto al carrito. El precio se obtiene de FakeStore API en tiempo real."
+					},
+					"response": []
+				},
+				{
+					"name": "Add second item to cart",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Cart has at least 2 items\", function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.items).to.be.an(\"array\");",
+									"    pm.expect(json.items.length).to.be.at.least(2);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"productId\": 3,\n    \"quantity\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/carts/items",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"carts",
+								"items"
+							]
+						},
+						"description": "Agrega un segundo producto para validar carrito con múltiples items."
+					},
+					"response": []
+				},
+				{
+					"name": "Update item quantity",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Cart total updated\", function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.total).to.be.a(\"number\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/carts/items/1?quantity=5",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"carts",
+								"items",
+								"1"
+							],
+							"query": [
+								{
+									"key": "quantity",
+									"value": "5",
+									"description": "Nueva cantidad (0 = eliminar item)"
+								}
+							]
+						},
+						"description": "Actualiza la cantidad de un item en el carrito. quantity=0 lo elimina."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Orders",
+			"description": "Ciclo de vida de órdenes.\nCheckout guarda automáticamente orderId y orderTotal para usar en Payments.",
+			"item": [
+				{
+					"name": "Checkout (cart -: order)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set(\"orderId\", json.id.toString());",
+									"    pm.collectionVariables.set(\"orderTotal\", json.total.toString());",
+									"    pm.test(\"Status 201 Created\", function () {",
+									"        pm.response.to.have.status(201);",
+									"    });",
+									"    pm.test(\"Order ID and total saved\", function () {",
+									"        pm.expect(json.id).to.be.a(\"number\");",
+									"        pm.expect(json.total).to.be.a(\"number\");",
+									"    });",
+									"    pm.test(\"Order status is CONFIRMED\", function () {",
+									"        pm.expect(json.status).to.eql(\"CONFIRMED\");",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/orders/checkout",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders",
+								"checkout"
+							]
+						},
+						"description": "Convierte el carrito en una orden confirmada. Precios actualizados de FakeStore. Vacía el carrito.\nGuarda orderId y orderTotal para la request de pago."
+					},
+					"response": []
+				},
+				{
+					"name": "List my orders",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Response is paginated\", function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.content).to.be.an(\"array\");",
+									"    pm.expect(json.totalElements).to.be.a(\"number\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/orders?page=0&size=20&sort=id,desc",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "0"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								},
+								{
+									"key": "sort",
+									"value": "id,desc"
+								}
+							]
+						},
+						"description": "Lista las órdenes del usuario autenticado con paginación.\npage es 0-based. sort usa formato: propiedad,dirección (ej: id,desc)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get order by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Has order fields\", function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.id).to.be.a(\"number\");",
+									"    pm.expect(json.status).to.be.a(\"string\");",
+									"    pm.expect(json.total).to.be.a(\"number\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/orders/{{orderId}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders",
+								"{{orderId}}"
+							]
+						},
+						"description": "Obtiene una orden por su ID (debe pertenecer al usuario autenticado).\nUsa la variable orderId guardada por Checkout."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Payments",
+			"description": "Procesamiento asíncrono de pagos con patrón Strategy.\nMétodos: CREDIT_CARD, DEBIT_CARD, CASH, BANK_TRANSFER.\nUsa orderId y orderTotal guardados por Checkout.",
+			"item": [
+				{
+					"name": "Process payment (async)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 202) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set(\"paymentId\", json.id.toString());",
+									"    pm.test(\"Status 202 Accepted\", function () {",
+									"        pm.response.to.have.status(202);",
+									"    });",
+									"    pm.test(\"Payment ID saved\", function () {",
+									"        pm.expect(json.id).to.be.a(\"number\");",
+									"    });",
+									"    pm.test(\"Payment status is PENDING\", function () {",
+									"        pm.expect(json.status).to.eql(\"PENDING\");",
+									"    });",
+									"    pm.test(\"Location header present\", function () {",
+									"        pm.response.to.have.header(\"Location\");",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}",
+								"description": "UUID único para evitar pagos duplicados (opcional pero recomendado)"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"orderId\": {{orderId}},\n    \"paymentMethod\": \"CREDIT_CARD\",\n    \"amount\": {{orderTotal}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/payments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"payments"
+							]
+						},
+						"description": "Envía pago para procesamiento asíncrono. Retorna 202 Accepted con status=PENDING.\nUsa orderId y orderTotal de la última orden.\nGuarda paymentId para Poll.\n\nMétodos de pago: CREDIT_CARD, DEBIT_CARD, CASH, BANK_TRANSFER."
+					},
+					"response": []
+				},
+				{
+					"name": "Poll payment status",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Payment has valid status\", function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.status).to.be.oneOf([\"PENDING\", \"COMPLETED\", \"FAILED\"]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/payments/{{paymentId}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"payments",
+								"{{paymentId}}"
+							]
+						},
+						"description": "Consulta el estado de un pago: PENDING, COMPLETED o FAILED.\nUsa la variable paymentId guardada por Process Payment."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Flujos Alternativos",
+			"description": "Operaciones adicionales que NO forman parte del flujo principal E2E.\nPermiten probar: crear orden sin carrito, actualizar orden, cancelar, y limpieza del carrito.",
+			"item": [
+				{
+					"name": "Create order (manual items)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set(\"orderId\", json.id.toString());",
+									"    pm.collectionVariables.set(\"orderTotal\", json.total.toString());",
+									"    pm.test(\"Status 201 Created\", function () {",
+									"        pm.response.to.have.status(201);",
+									"    });",
+									"    pm.test(\"Order ID and total saved\", function () {",
+									"        pm.expect(json.id).to.be.a(\"number\");",
+									"        pm.expect(json.total).to.be.a(\"number\");",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"items\": [\n        {\n            \"productId\": 1,\n            \"quantity\": 2\n        },\n        {\n            \"productId\": 3,\n            \"quantity\": 1\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/orders",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders"
+							]
+						},
+						"description": "Crea una orden directamente con items (sin pasar por el carrito).\nPrecios se obtienen de FakeStore API.\nGuarda orderId y orderTotal."
+					},
+					"response": []
+				},
+				{
+					"name": "Update order",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Order updated\", function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.id).to.be.a(\"number\");",
+									"    pm.expect(json.details).to.be.an(\"array\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"items\": [\n        {\n            \"productId\": 1,\n            \"quantity\": 3\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/orders/{{orderId}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders",
+								"{{orderId}}"
+							]
+						},
+						"description": "Actualiza items de la orden creada manualmente.\nNo se pueden modificar órdenes en estado DELIVERED.\nItems solo modificables en PENDING o CONFIRMED."
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel order",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 204 No Content\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/orders/{{orderId}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders",
+								"{{orderId}}"
+							]
+						},
+						"description": "Cancela la orden manual (no la del flujo principal que ya fue pagada).\nNo es posible cancelar si ya fue pagada o entregada."
+					},
+					"response": []
+				},
+				{
+					"name": "Add item to cart (restore)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Cart has items\", function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.items).to.be.an(\"array\").and.not.empty;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"productId\": 2,\n    \"quantity\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/carts/items",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"carts",
+								"items"
+							]
+						},
+						"description": "Agrega un item al carrito para probar Remove y Clear a continuación."
+					},
+					"response": []
+				},
+				{
+					"name": "Remove item from cart",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/carts/items/2",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"carts",
+								"items",
+								"2"
+							]
+						},
+						"description": "Elimina el producto 2 del carrito."
+					},
+					"response": []
+				},
+				{
+					"name": "Clear cart",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 204 No Content\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/carts",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"carts"
+							]
+						},
+						"description": "Vacía completamente el carrito del usuario."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

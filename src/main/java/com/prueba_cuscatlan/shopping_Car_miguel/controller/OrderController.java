@@ -1,6 +1,7 @@
 package com.prueba_cuscatlan.shopping_Car_miguel.controller;
 
 import com.prueba_cuscatlan.shopping_Car_miguel.exception.ErrorResponse;
+import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.CheckoutRequest;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderRequest;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderResponse;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.UpdateOrderRequest;
@@ -28,6 +29,18 @@ import org.springframework.web.bind.annotation.*;
 public class OrderController {
 
     private final OrderService orderService;
+
+    @Operation(summary = "Checkout — convert cart into a confirmed order", description = "Fetches current prices from FakeStore, creates the order, and clears the cart.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Order created from cart", content = @Content(schema = @Schema(implementation = OrderResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Cart is empty", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Customer or cart not found", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "502", description = "FakeStore API unavailable", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/checkout")
+    ResponseEntity<OrderResponse> checkout(@Valid @RequestBody CheckoutRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(orderService.checkout(request));
+    }
 
     @Operation(summary = "Create a new order (prices fetched from external API)")
     @ApiResponses({

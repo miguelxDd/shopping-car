@@ -30,7 +30,6 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentAsyncProcessor asyncProcessor;
 
     @Override
-    @Transactional
     public OrderPaymentResponse processPayment(String idempotencyKey, OrderPaymentRequest request) {
         // Idempotency: same key → return stored result without reprocessing
         if (idempotencyKey != null) {

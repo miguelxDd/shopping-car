@@ -16,15 +16,15 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "External Products", description = "Proxy to FakeStore API — read-only product catalog")
+@Tag(name = "Products", description = "Product catalog — sourced from FakeStore API via Proxy + Circuit Breaker")
 @RestController
-@RequestMapping(Constants.EXTERNAL_PRODUCTS_PATH)
+@RequestMapping(Constants.PRODUCTS_PATH)
 @RequiredArgsConstructor
 public class ExternalProductController {
 
     private final ExternalProductService externalProductService;
 
-    @Operation(summary = "List all products from FakeStore API")
+    @Operation(summary = "List all products")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Product list returned"),
         @ApiResponse(responseCode = "502", description = "FakeStore API unreachable (circuit open after retries)",
@@ -35,11 +35,11 @@ public class ExternalProductController {
         return ResponseEntity.ok(externalProductService.findAll());
     }
 
-    @Operation(summary = "Get a product by ID from FakeStore API")
+    @Operation(summary = "Get a product by ID")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Product found",
             content = @Content(schema = @Schema(implementation = ExternalProductDTO.class))),
-        @ApiResponse(responseCode = "404", description = "Product not found in FakeStore",
+        @ApiResponse(responseCode = "404", description = "Product not found",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "502", description = "FakeStore API unreachable",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
@@ -49,7 +49,7 @@ public class ExternalProductController {
         return ResponseEntity.ok(externalProductService.findById(id));
     }
 
-    @Operation(summary = "Get all product categories from FakeStore API")
+    @Operation(summary = "Get all product categories")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Category list returned"),
         @ApiResponse(responseCode = "502", description = "FakeStore API unreachable",
@@ -60,7 +60,7 @@ public class ExternalProductController {
         return ResponseEntity.ok(externalProductService.findCategories());
     }
 
-    @Operation(summary = "Get products by category from FakeStore API")
+    @Operation(summary = "Get products by category")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Products in category returned"),
         @ApiResponse(responseCode = "502", description = "FakeStore API unreachable",

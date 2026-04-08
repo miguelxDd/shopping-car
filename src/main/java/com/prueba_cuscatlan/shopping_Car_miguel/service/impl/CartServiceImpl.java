@@ -1,17 +1,16 @@
 package com.prueba_cuscatlan.shopping_Car_miguel.service.impl;
 
-import com.prueba_cuscatlan.shopping_Car_miguel.exception.BusinessException;
 import com.prueba_cuscatlan.shopping_Car_miguel.exception.ResourceNotFoundException;
 import com.prueba_cuscatlan.shopping_Car_miguel.mapper.CartMapper;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.CartItemRequest;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.CartResponse;
-import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.ProductResponse;
+import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.ExternalProductDTO;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.Cart;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.CartItem;
 import com.prueba_cuscatlan.shopping_Car_miguel.repository.CartItemRepository;
 import com.prueba_cuscatlan.shopping_Car_miguel.repository.CartRepository;
 import com.prueba_cuscatlan.shopping_Car_miguel.service.CartService;
-import com.prueba_cuscatlan.shopping_Car_miguel.service.ProductService;
+import com.prueba_cuscatlan.shopping_Car_miguel.service.ExternalProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,10 +20,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class CartServiceImpl implements CartService {
 
-    private final CartRepository cartRepository;
-    private final CartItemRepository cartItemRepository;
-    private final ProductService productService;
-    private final CartMapper cartMapper;
+    private final CartRepository        cartRepository;
+    private final CartItemRepository    cartItemRepository;
+    private final ExternalProductService externalProductService;
+    private final CartMapper            cartMapper;
 
     @Override
     public CartResponse getCartByUserId(String userId) {
@@ -36,11 +35,8 @@ public class CartServiceImpl implements CartService {
     public CartResponse addItem(String userId, CartItemRequest request) {
         Cart cart = findOrCreateCart(userId);
 
-        ProductResponse product = productService.findById(request.getProductId());
-
-        if (product.getStock() < request.getQuantity()) {
-            throw new BusinessException("Insufficient stock for product: " + product.getName());
-        }
+        // Price and name sourced from FakeStore — snapshot at add time, no local Product table
+        ExternalProductDTO product = externalProductService.findById(request.getProductId());
 
         cartItemRepository.findByCartIdAndProductId(cart.getId(), request.getProductId())
                 .ifPresentOrElse(
@@ -48,7 +44,7 @@ public class CartServiceImpl implements CartService {
                         () -> cart.getItems().add(CartItem.builder()
                                 .cart(cart)
                                 .productId(product.getId())
-                                .productName(product.getName()) // snapshot — no FK to Product
+                                .productName(product.getTitle())  // snapshot — no FK to Product entity
                                 .quantity(request.getQuantity())
                                 .unitPrice(product.getPrice())
                                 .build()));
@@ -87,6 +83,8 @@ public class CartServiceImpl implements CartService {
         cart.getItems().clear();
         cartRepository.save(cart);
     }
+
+    // methods to find or create cart, and to find cart or throw if not found (for operations that require existing cart)
 
     private Cart findOrCreateCart(String userId) {
         return cartRepository.findByUserId(userId)

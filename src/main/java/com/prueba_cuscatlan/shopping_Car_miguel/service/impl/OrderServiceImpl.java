@@ -3,26 +3,26 @@ package com.prueba_cuscatlan.shopping_Car_miguel.service.impl;
 import com.prueba_cuscatlan.shopping_Car_miguel.exception.BadRequestException;
 import com.prueba_cuscatlan.shopping_Car_miguel.exception.ResourceNotFoundException;
 import com.prueba_cuscatlan.shopping_Car_miguel.mapper.OrderMapper;
+import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.CheckoutRequest;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.ExternalProductDTO;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderDetailRequest;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderRequest;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderResponse;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.UpdateOrderRequest;
-import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.Customer;
+import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.Cart;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.Order;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.OrderDetail;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.enums.OrderStatus;
-import com.prueba_cuscatlan.shopping_Car_miguel.repository.CustomerRepository;
+import com.prueba_cuscatlan.shopping_Car_miguel.repository.CartRepository;
 import com.prueba_cuscatlan.shopping_Car_miguel.repository.OrderRepository;
 import com.prueba_cuscatlan.shopping_Car_miguel.service.ExternalProductService;
 import com.prueba_cuscatlan.shopping_Car_miguel.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -34,35 +34,78 @@ import java.util.List;
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
-    private final CustomerRepository customerRepository;
-    private final ExternalProductService externalProductService; // injected proxy
+    private final CartRepository cartRepository;
+    private final ExternalProductService externalProductService;
     private final OrderMapper orderMapper;
+
+    // Checkout: converts the user's cart into a confirmed order, then clears the
+    // cart.
+    // Prices are fetched fresh from FakeStore at checkout time.
+
+    @Override
+    @Transactional
+    public OrderResponse checkout(CheckoutRequest request) {
+        Cart cart = cartRepository.findByUserId(request.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Cart not found for user: " + request.getUserId()));
+
+        if (cart.getItems().isEmpty()) {
+            throw new BadRequestException("Cannot checkout an empty cart");
+        }
+
+        Order order = Order.builder()
+                .userId(request.getUserId())
+                .status(OrderStatus.CONFIRMED)
+                .build();
+
+        List<OrderDetail> details = cart.getItems().stream().map(item -> {
+            ExternalProductDTO product = externalProductService.findById(item.getProductId());
+            BigDecimal unitPrice = product.getPrice();
+            BigDecimal subtotal = unitPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
+            return OrderDetail.builder()
+                    .order(order)
+                    .productId(product.getId())
+                    .productName(product.getTitle())
+                    .quantity(item.getQuantity())
+                    .unitPrice(unitPrice)
+                    .subtotal(subtotal)
+                    .build();
+        }).toList();
+
+        order.getDetails().addAll(details);
+        order.setTotal(computeTotal(details));
+
+        OrderResponse response = orderMapper.toResponse(orderRepository.save(order));
+
+        cart.getItems().clear();
+        cartRepository.save(cart);
+
+        log.info("Checkout complete userId={} orderId={} total={}",
+                request.getUserId(), response.getId(), response.getTotal());
+
+        return response;
+    }
 
     @Override
     @Transactional
     public OrderResponse create(OrderRequest request) {
-        Customer customer = findCustomerOrThrow(request.getCustomerId());
-
         Order order = Order.builder()
-                .customer(customer)
+                .userId(request.getUserId())
                 .build();
 
         List<OrderDetail> details = buildDetails(request.getItems(), order);
-        BigDecimal total = computeTotal(details);
-
         order.getDetails().addAll(details);
-        order.setTotal(total);
+        order.setTotal(computeTotal(details));
 
-        log.info("Creating order for customerId={} with {} items, total={}",
-                customer.getId(), details.size(), total);
+        log.info("Creating order for userId={} items={} total={}",
+                request.getUserId(), details.size(), order.getTotal());
 
         return orderMapper.toResponse(orderRepository.save(order));
     }
 
     @Override
     public Page<OrderResponse> findAll(Pageable pageable) {
-        return orderRepository.findAll(pageable)
-                .map(orderMapper::toResponse);
+        return orderRepository.findAll(pageable).map(orderMapper::toResponse);
     }
 
     @Override
@@ -78,11 +121,9 @@ public class OrderServiceImpl implements OrderService {
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw new BadRequestException("Cannot update a cancelled order");
         }
-
         if (request.getStatus() != null) {
             order.setStatus(request.getStatus());
         }
-
         if (request.getItems() != null && !request.getItems().isEmpty()) {
             order.getDetails().clear();
             List<OrderDetail> newDetails = buildDetails(request.getItems(), order);
@@ -113,22 +154,15 @@ public class OrderServiceImpl implements OrderService {
 
     // ── private helpers ───────────────────────────────────────────────────────
 
-    /**
-     * For each requested item, calls the ExternalProductService (proxy) to get
-     * the current price, then builds an OrderDetail with a frozen snapshot.
-     */
     private List<OrderDetail> buildDetails(List<OrderDetailRequest> items, Order order) {
         return items.stream().map(item -> {
-            // Price consultation via Proxy — DIP: depends on abstraction
             ExternalProductDTO product = externalProductService.findById(item.getProductId());
-
             BigDecimal unitPrice = product.getPrice();
-            BigDecimal subtotal  = unitPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
-
+            BigDecimal subtotal = unitPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
             return OrderDetail.builder()
                     .order(order)
                     .productId(product.getId())
-                    .productName(product.getTitle())   // snapshot at order time
+                    .productName(product.getTitle())
                     .quantity(item.getQuantity())
                     .unitPrice(unitPrice)
                     .subtotal(subtotal)
@@ -145,10 +179,5 @@ public class OrderServiceImpl implements OrderService {
     private Order findOrderOrThrow(Long id) {
         return orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order", id));
-    }
-
-    private Customer findCustomerOrThrow(Long id) {
-        return customerRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Customer", id));
     }
 }

@@ -42,6 +42,8 @@ public class SecurityConfig {
                         "/v3/api-docs").permitAll()
                 // H2 console (dev only)
                 .requestMatchers("/h2-console/**").permitAll()
+                // Actuator health
+                .requestMatchers("/actuator/health").permitAll()
                 // Products proxy — read-only, public
                 .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
                 // Everything else requires a valid JWT

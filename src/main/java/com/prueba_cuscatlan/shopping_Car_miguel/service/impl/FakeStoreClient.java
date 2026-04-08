@@ -1,6 +1,7 @@
 package com.prueba_cuscatlan.shopping_Car_miguel.service.impl;
 
 import com.prueba_cuscatlan.shopping_Car_miguel.config.FakeStoreProperties;
+import com.prueba_cuscatlan.shopping_Car_miguel.exception.ExternalApiException;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.ExternalProductDTO;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -19,7 +20,7 @@ public class FakeStoreClient {
     private final RestTemplate restTemplate;
     private final FakeStoreProperties properties;
 
-    @CircuitBreaker(name = "fakestore")
+    @CircuitBreaker(name = "fakestore", fallbackMethod = "findAllFallback")
     @Retry(name = "fakestore")
     public List<ExternalProductDTO> findAll() {
         return restTemplate.exchange(
@@ -29,7 +30,7 @@ public class FakeStoreClient {
                 }).getBody();
     }
 
-    @CircuitBreaker(name = "fakestore")
+    @CircuitBreaker(name = "fakestore", fallbackMethod = "findByIdFallback")
     @Retry(name = "fakestore")
     public ExternalProductDTO findById(Long id) {
         return restTemplate.getForObject(
@@ -37,7 +38,7 @@ public class FakeStoreClient {
                 ExternalProductDTO.class, id);
     }
 
-    @CircuitBreaker(name = "fakestore")
+    @CircuitBreaker(name = "fakestore", fallbackMethod = "findCategoriesFallback")
     @Retry(name = "fakestore")
     public List<String> findCategories() {
         return restTemplate.exchange(
@@ -47,7 +48,7 @@ public class FakeStoreClient {
                 }).getBody();
     }
 
-    @CircuitBreaker(name = "fakestore")
+    @CircuitBreaker(name = "fakestore", fallbackMethod = "findByCategoryFallback")
     @Retry(name = "fakestore")
     public List<ExternalProductDTO> findByCategory(String category) {
         return restTemplate.exchange(
@@ -56,5 +57,24 @@ public class FakeStoreClient {
                 new ParameterizedTypeReference<List<ExternalProductDTO>>() {
                 },
                 category).getBody();
+    }
+
+    // ── CircuitBreaker fallback methods ──────────────────────────────────────
+
+    private List<ExternalProductDTO> findAllFallback(Throwable t) {
+        throw new ExternalApiException("FakeStore service unavailable: " + t.getMessage());
+    }
+
+    private ExternalProductDTO findByIdFallback(Long id, Throwable t) {
+        throw new ExternalApiException("FakeStore service unavailable for product " + id + ": " + t.getMessage());
+    }
+
+    private List<String> findCategoriesFallback(Throwable t) {
+        throw new ExternalApiException("FakeStore service unavailable for categories: " + t.getMessage());
+    }
+
+    private List<ExternalProductDTO> findByCategoryFallback(String category, Throwable t) {
+        throw new ExternalApiException(
+                "FakeStore service unavailable for category " + category + ": " + t.getMessage());
     }
 }

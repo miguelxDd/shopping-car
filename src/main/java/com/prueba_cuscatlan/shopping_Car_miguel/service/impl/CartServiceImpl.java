@@ -26,6 +26,7 @@ public class CartServiceImpl implements CartService {
     private final CartMapper            cartMapper;
 
     @Override
+    @Transactional
     public CartResponse getCartByUserId(String userId) {
         return cartMapper.toResponse(findOrCreateCart(userId));
     }
@@ -40,7 +41,11 @@ public class CartServiceImpl implements CartService {
 
         cartItemRepository.findByCartIdAndProductId(cart.getId(), request.getProductId())
                 .ifPresentOrElse(
-                        existing -> existing.setQuantity(existing.getQuantity() + request.getQuantity()),
+                        existing -> {
+                            existing.setQuantity(existing.getQuantity() + request.getQuantity());
+                            existing.setUnitPrice(product.getPrice());
+                            existing.setProductName(product.getTitle());
+                        },
                         () -> cart.getItems().add(CartItem.builder()
                                 .cart(cart)
                                 .productId(product.getId())

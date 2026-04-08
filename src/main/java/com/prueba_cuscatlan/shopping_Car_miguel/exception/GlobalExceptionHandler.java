@@ -1,9 +1,12 @@
 package com.prueba_cuscatlan.shopping_Car_miguel.exception;
 
 import jakarta.validation.ConstraintViolationException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -88,6 +91,26 @@ public class GlobalExceptionHandler {
                         status = HttpStatus.SERVICE_UNAVAILABLE;
                 return ResponseEntity.status(status)
                                 .body(buildError(status, "External API Error", ex.getMessage(), null));
+        }
+
+        @ExceptionHandler(AuthenticationException.class)
+        ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException ex) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                                .body(buildError(HttpStatus.UNAUTHORIZED, "Unauthorized", "Bad credentials", null));
+        }
+
+        @ExceptionHandler(AccessDeniedException.class)
+        ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                                .body(buildError(HttpStatus.FORBIDDEN, "Forbidden", ex.getMessage(), null));
+        }
+
+        @ExceptionHandler(CallNotPermittedException.class)
+        ResponseEntity<ErrorResponse> handleCircuitBreakerOpen(CallNotPermittedException ex) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                                .body(buildError(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
+                                                "External service is temporarily unavailable, please try again later",
+                                                null));
         }
 
         @ExceptionHandler(Exception.class)

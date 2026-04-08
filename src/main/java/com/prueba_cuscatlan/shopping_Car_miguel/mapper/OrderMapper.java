@@ -1,21 +1,17 @@
 package com.prueba_cuscatlan.shopping_Car_miguel.mapper;
 
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderDetailResponse;
-import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderResponse;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderPaymentResponse;
+import com.prueba_cuscatlan.shopping_Car_miguel.model.dto.OrderResponse;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.Order;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.OrderDetail;
 import com.prueba_cuscatlan.shopping_Car_miguel.model.entity.OrderPayment;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Component
-@RequiredArgsConstructor
 public class OrderMapper {
-
-    private final CustomerMapper customerMapper;
 
     public OrderResponse toResponse(Order order) {
         List<OrderDetailResponse> details = order.getDetails().stream()
@@ -24,7 +20,7 @@ public class OrderMapper {
 
         return OrderResponse.builder()
                 .id(order.getId())
-                .customer(customerMapper.toResponse(order.getCustomer()))
+                .userId(order.getUserId())
                 .orderDate(order.getOrderDate())
                 .status(order.getStatus())
                 .total(order.getTotal())

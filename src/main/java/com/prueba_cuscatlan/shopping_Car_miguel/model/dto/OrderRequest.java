@@ -13,8 +13,8 @@ import java.util.List;
 @Builder
 public class OrderRequest {
 
-    @NotNull(message = "Customer ID is required")
-    private Long customerId;
+    @NotBlank(message = "User ID is required")
+    private String userId;
 
     @NotEmpty(message = "Order must have at least one item")
     @Valid

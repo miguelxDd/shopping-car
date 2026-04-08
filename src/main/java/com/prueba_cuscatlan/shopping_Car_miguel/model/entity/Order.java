@@ -23,9 +23,9 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "customer_id", nullable = false)
-    private Customer customer;
+    // userId from the cart — no local Customer entity needed
+    @Column(name = "user_id", nullable = false)
+    private String userId;
 
     @CreationTimestamp
     @Column(name = "order_date", updatable = false)
@@ -34,7 +34,7 @@ public class Order {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private OrderStatus status = OrderStatus.PENDING;
+    private OrderStatus status = OrderStatus.CONFIRMED;
 
     @Column(nullable = false, precision = 10, scale = 2)
     @Builder.Default

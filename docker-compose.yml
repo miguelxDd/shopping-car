@@ -10,7 +10,7 @@ services:
       - DB_DRIVER=${DB_DRIVER:-}
       - DB_USERNAME=${DB_USERNAME:-}
       - DB_PASSWORD=${DB_PASSWORD:-}
-      - JWT_SECRET=${JWT_SECRET:-}
+      - JWT_SECRET=${JWT_SECRET:-c2hvcHBpbmdDYXJ0U2VjcmV0S2V5Rm9yQ3VzY2F0bGFuUHJ1ZWJhVGVjbmljYTIwMjY=}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s

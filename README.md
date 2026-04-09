@@ -42,7 +42,13 @@ La app levanta en `http://localhost:8080`.
 
 Swagger UI disponible en: `http://localhost:8080/swagger-ui.html`
 
-Consola H2: `http://localhost:8080/h2-console` (usuario: `sa`, sin contraseña)
+Consola H2: `http://localhost:8080/h2-console`
+
+| Campo     | Valor                          |
+|-----------|--------------------------------|
+| JDBC URL  | `jdbc:h2:mem:shoppingcartdb`   |
+| User      | `sa`                           |
+| Password  | *(vacío)*                      |
 
 ## Docker
 

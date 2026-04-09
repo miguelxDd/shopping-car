@@ -1,5 +1,104 @@
 # Shopping Cart API
 
+**Author:** Miguel Antonio Amaya Hernández
+
+---
+
+## Technologies
+
+- Java 21
+- Spring Boot 4.0
+- Spring Security + JWT (jjwt 0.12)
+- Spring Data JPA
+- H2 Database (in-memory for development)
+- Resilience4j (circuit breaker & retry)
+- Swagger / OpenAPI (springdoc)
+- Lombok
+- Maven
+
+## Project Structure
+
+```
+controller/     → REST Endpoints (Auth, Cart, Order, Payment, Products)
+model/          → JPA Entities, DTOs and enums
+repository/     → Spring Data Repositories
+service/        → Business logic and integrations
+security/       → JWT Filter, token service, UserDetailsService
+config/         → General configuration
+exception/      → Centralized error handling
+mapper/         → Entity-to-DTO conversion
+util/           → Utilities
+```
+
+## Getting Started
+
+```bash
+./mvnw spring-boot:run
+```
+
+The application starts at `http://localhost:8080`.
+
+Swagger UI available at: `http://localhost:8080/swagger-ui.html`
+
+H2 Console: `http://localhost:8080/h2-console`
+
+| Field     | Value                          |
+|-----------|--------------------------------|
+| JDBC URL  | `jdbc:h2:mem:shoppingcartdb`   |
+| User      | `sa`                           |
+| Password  | *(empty)*                      |
+
+## Docker
+
+```bash
+# Dev (default)
+docker compose up -d
+
+# Prod
+cp .env.example .env   # edit with actual values
+SPRING_PROFILE=prod docker compose up -d
+```
+
+For production, configure in `.env`: `DB_URL`, `DB_DRIVER`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`.
+
+Or without Compose:
+
+```bash
+docker build -t shopping-cart-api .
+docker run -p 8080:8080 shopping-cart-api
+```
+
+- Multi-stage build (JDK 21 for compilation, JRE 21 for runtime)
+- Non-root user inside the container
+- Healthcheck via `/actuator/health`
+- Memory limit 512M
+- JVM configured with `-XX:MaxRAMPercentage=75.0` to respect container limits
+
+## Tests
+
+```bash
+./mvnw test
+```
+
+Includes unit and integration tests.
+
+## Profiles
+
+- `dev` — In-memory H2, H2 console enabled, SQL visible in logs
+- `prod` — External database via environment variables (`DB_URL`, `DB_DRIVER`, `DB_USERNAME`, `DB_PASSWORD`)
+
+## External API
+
+Consumes the [Fake Store API](https://fakestoreapi.com/products) to fetch products, with circuit breaker and retry configured via Resilience4j.
+
+## Postman Collection
+
+Import the `Shopping-Cart-API.postman_collection.json` file included in the project root.
+
+---
+
+# Shopping Cart API (Español)
+
 API REST para gestión de carrito de compras, órdenes y pagos.
 
 **Autor:** Miguel Antonio Amaya Hernández
